@@ -6,18 +6,21 @@ from statsmodels.tsa.holtwinters import ExponentialSmoothing
 
 class PricingCalculator:
     def __init__(self, data: Dict[str, Any]):
-        # Existing initializations...
-        self.initial_price = data['initial_price']
-        self.initial_quantity = data['initial_quantity']
-        self.elasticity = data['price_elasticity']
-        self.fixed_costs = data['fixed_costs']
-        self.variable_costs = data['variable_costs']
-        self.competitor_price = data['competitor_price']
-        self.market_share = data.get('market_share', 0.5)
-        
+        # Convert all inputs to float
+        try:
+            self.initial_price = float(data['initial_price'])
+            self.initial_quantity = float(data['initial_quantity'])
+            self.elasticity = float(data['price_elasticity'])
+            self.fixed_costs = float(data['fixed_costs'])
+            self.variable_costs = float(data['variable_costs'])
+            self.competitor_price = float(data['competitor_price'])
+            self.market_share = float(data.get('market_share', 0.5))
+            self.seasonality_factor = float(data.get('seasonality_factor', 1.0))
+            self.quality_index = float(data.get('quality_index', 1.0))
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Invalid input data: {str(e)}")
+
         # New parameters
-        self.seasonality_factor = data.get('seasonality_factor', 1.0)
-        self.quality_index = data.get('quality_index', 1.0)
         self.market_growth_rate = data.get('market_growth_rate', 0.02)
         self.min_margin = data.get('min_margin', 0.1)  # Minimum profit margin
 
@@ -55,11 +58,37 @@ class PricingCalculator:
         return price / self.quality_index
 
     def demand_function(self, price: float) -> float:
-        """Enhanced demand function with quality and seasonality"""
-        base_demand = self.initial_quantity * (self.initial_price / self.quality_adjusted_price(price)) ** self.elasticity
-        seasonal_demand = self.seasonal_demand_adjustment(base_demand)
-        market_growth_adjustment = 1 + self.market_growth_rate
-        return seasonal_demand * market_growth_adjustment
+        """Calculate quantity demanded at given price using constant elasticity demand function"""
+        try:
+            price = float(price)
+            return float(self.initial_quantity) * (float(self.initial_price) / price) ** float(self.elasticity)
+        except Exception as e:
+            raise ValueError(f"Error in demand calculation: {str(e)}")
+
+    def revenue_function(self, price: float) -> float:
+        """Calculate revenue at given price"""
+        try:
+            quantity = self.demand_function(float(price))
+            return float(price) * quantity
+        except Exception as e:
+            raise ValueError(f"Error in revenue calculation: {str(e)}")
+
+    def cost_function(self, quantity: float) -> float:
+        """Calculate total costs for given quantity"""
+        try:
+            return float(self.fixed_costs) + (float(self.variable_costs) * float(quantity))
+        except Exception as e:
+            raise ValueError(f"Error in cost calculation: {str(e)}")
+
+    def profit_function(self, price: float) -> float:
+        """Calculate profit at given price"""
+        try:
+            quantity = self.demand_function(float(price))
+            revenue = self.revenue_function(float(price))
+            costs = self.cost_function(quantity)
+            return revenue - costs
+        except Exception as e:
+            raise ValueError(f"Error in profit calculation: {str(e)}")
 
     def calculate_price_bounds(self) -> tuple:
         """Calculate price bounds ensuring minimum margin"""
@@ -68,31 +97,35 @@ class PricingCalculator:
         return (min_price, max_price)
 
     def calculate_optimal_price(self) -> Dict[str, float]:
-        """Enhanced optimal price calculation"""
-        bounds = [self.calculate_price_bounds()]
-        
-        result = minimize(
-            lambda p: -self.profit_function(p[0]), 
-            x0=[self.initial_price],
-            bounds=bounds,
-            method='L-BFGS-B'
-        )
+        """Find optimal price that maximizes profit"""
+        try:
+            # Set bounds for price optimization (between 50% and 200% of initial price)
+            bounds = [(float(self.initial_price) * 0.5, float(self.initial_price) * 2.0)]
+            
+            # Minimize negative profit (equivalent to maximizing profit)
+            result = minimize(
+                lambda p: -self.profit_function(float(p[0])), 
+                x0=[float(self.initial_price)],
+                bounds=bounds,
+                method='L-BFGS-B'
+            )
 
-        optimal_price = result.x[0]
-        optimal_quantity = self.demand_function(optimal_price)
-        margin = (optimal_price - self.variable_costs) / optimal_price
-
-        return {
-            "optimal_price": round(optimal_price, 2),
-            "optimal_quantity": round(optimal_quantity, 2),
-            "revenue": round(self.revenue_function(optimal_price), 2),
-            "profit": round(self.profit_function(optimal_price), 2),
-            "market_share": round(self.competitor_impact(optimal_price), 3),
-            "break_even_point": round(self.fixed_costs / (optimal_price - self.variable_costs), 2),
-            "profit_margin": round(margin, 3),
-            "seasonality_impact": round(self.seasonal_demand_adjustment(1.0), 3),
-            "quality_adjusted_price": round(self.quality_adjusted_price(optimal_price), 2)
-        }
+            optimal_price = float(result.x[0])
+            optimal_quantity = self.demand_function(optimal_price)
+            
+            return {
+                "optimal_price": round(optimal_price, 2),
+                "optimal_quantity": round(optimal_quantity, 2),
+                "revenue": round(self.revenue_function(optimal_price), 2),
+                "profit": round(self.profit_function(optimal_price), 2),
+                "market_share": round(self.competitor_impact(optimal_price), 3),
+                "break_even_point": round(
+                    float(self.fixed_costs) / (optimal_price - float(self.variable_costs)), 
+                    2
+                )
+            }
+        except Exception as e:
+            raise ValueError(f"Error in optimization: {str(e)}")
 
     def sensitivity_analysis(self, variable: str, range_percent: float = 0.2) -> Dict[str, list]:
         """Perform sensitivity analysis on key variables"""
