@@ -1,0 +1,14 @@
+name: pricing-simulator-api
+services:
+- name: api
+  github:
+    branch: main
+    deploy_on_push: true
+    repo: your-username/your-repo-name
+  source_dir: /
+  environment_slug: python
+  instance_size_slug: basic-xxs
+  run_command: gunicorn run:app
+  envs:
+  - key: FLASK_ENV
+    value: production 
